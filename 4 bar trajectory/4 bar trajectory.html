@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>4-bar Trajectory - Interactive</title>
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; margin: 0; padding: 20px; background: #f8f9fa; color: #222; }
+  h1 { margin: 0 0 4px 0; font-size: 1.6rem; }
+  .sub { color: #555; margin-bottom: 16px; font-size: 0.95rem; }
+  .layout { display: grid; grid-template-columns: 320px 1fr; gap: 20px; align-items: start; }
+  .panel { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 14px; position: sticky; top: 20px; }
+  .panel h3 { margin: 0 0 10px 0; font-size: 1.05rem; }
+  .control { margin-bottom: 12px; }
+  .control label { display: flex; justify-content: space-between; font-size: 0.88rem; margin-bottom: 4px; }
+  .control label span:last-child { font-weight: 600; font-family: monospace; }
+  input[type=range] { width: 100%; }
+  .plots { display: grid; grid-template-rows: auto auto auto; gap: 20px; }
+  .plot-card { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 10px; }
+  #verification-stats, #position-stats { font-family: monospace; font-size: 0.85rem; background: #f6f8fa; padding: 10px; border-radius: 6px; margin-top: 8px; white-space: pre-wrap; line-height: 1.4; }
+  .note { font-size: 0.82rem; color: #666; margin-top: 10px; }
+  button { width: 100%; padding: 8px; border: 1px solid #ccc; background: #f1f1f1; border-radius: 6px; cursor: pointer; }
+  button:hover { background: #e9e9e9; }
+  .badge { display:inline-block; padding:2px 6px; border-radius:4px; font-size:0.75rem; font-weight:600; margin-right:4px; color:white; }
+  .b-a { background:#888; } .b-b { background:#e67e22; } .b-d { background:#8e44ad; } .b-e { background:#27ae60; } .b-s { background:#2980b9; } .b-m { background:#16a085; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } .panel { position: static; } }
+</style>
+</head>
+<body>
+<h1>4-bar Trajectory Calculations</h1>
+<div class="sub">Interactive HTML — same logic as <code>4 bar trajectory.ipynb</code> / <code>4 bar trajectory.py</code> (b,d,e, x1,y1, x2,y2, theta range). Drag sliders to update.</div>
+
+<div class="layout">
+  <div class="panel">
+    <h3>Parameters</h3>
+    <div class="control"><label><span>x1</span><span id="v-x1">0.0</span></label><input type="range" id="x1" min="-10" max="10" step="0.1" value="0.0"></div>
+    <div class="control"><label><span>y1</span><span id="v-y1">0.0</span></label><input type="range" id="y1" min="-10" max="10" step="0.1" value="0.0"></div>
+    <div class="control"><label><span>x2</span><span id="v-x2">5.0</span></label><input type="range" id="x2" min="-10" max="10" step="0.1" value="5.0"></div>
+    <div class="control"><label><span>y2</span><span id="v-y2">0.0</span></label><input type="range" id="y2" min="-10" max="10" step="0.1" value="0.0"></div>
+    <div class="control"><label><span>b (from x2,y2)</span><span id="v-b">5.0</span></label><input type="range" id="b" min="0.1" max="20" step="0.1" value="5.0"></div>
+    <div class="control"><label><span>d (topshell)</span><span id="v-d">5.0</span></label><input type="range" id="d" min="0.1" max="20" step="0.1" value="5.0"></div>
+    <div class="control"><label><span>e (from x1,y1)</span><span id="v-e">5.0</span></label><input type="range" id="e" min="0.1" max="20" step="0.1" value="5.0"></div>
+    <hr>
+    <div class="control"><label><span>theta_start</span><span id="v-theta_start">0.00</span></label><input type="range" id="theta_start" min="0" max="6.28" step="0.1" value="0.0"></div>
+    <div class="control"><label><span>theta_end</span><span id="v-theta_end">1.57</span></label><input type="range" id="theta_end" min="0" max="6.28" step="0.1" value="1.57"></div>
+    <div class="control"><label><span>theta_steps</span><span id="v-theta_steps">10</span></label><input type="range" id="theta_steps" min="10" max="200" step="1" value="10"></div>
+    <button id="reset">Reset to defaults</button>
+    <div class="note">Logic mirrors <code>calculate_4bar</code> in the notebook: <code>a</code> = base, <code>c</code> = diagonal (law of cos), <code>omega</code> + <code>angle_ac</code> with circle-intersection fallback so <code>|(s,t)-(m,n)| == d</code>. Singularity at <code>c~0</code> clamped.</div>
+  </div>
+
+  <div class="plots">
+    <div class="plot-card"><div id="plot-trajectory" style="height: 520px;"></div></div>
+    <div class="plot-card"><div id="position-info"></div></div>
+    <div class="plot-card"><div id="plot-verification" style="height: 360px;"></div><div id="verification-stats"></div></div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// CALCULATION FUNCTION - mirrors 4 bar trajectory.py:32
+// ============================================================
+function calculate_4bar(x1, y1, x2, y2, b, d, e, theta) {
+    const a_val = Math.sqrt((x1 - x2)**2 + (y1 - y2)**2);
+    let c_val = Math.sqrt(a_val**2 + b**2 - 2 * a_val * b * Math.cos(theta));
+    if (c_val < 1e-9) c_val = 1e-9;
+
+    let omega_arg = (c_val**2 + e**2 - d**2) / (2 * c_val * e);
+    omega_arg = Math.max(-1.0, Math.min(1.0, omega_arg));
+    const omega_val = Math.asin(omega_arg);
+
+    const angle_ah = Math.atan2(y1 - y2, x1 - x2);
+
+    const s_val = x2 + b * Math.cos(theta + angle_ah);
+    const t_val = y2 + b * Math.sin(theta + angle_ah);
+
+    let angle_ac_arg = (b * Math.sin(theta)) / c_val;
+    angle_ac_arg = Math.max(-1.0, Math.min(1.0, angle_ac_arg));
+    const angle_ac = Math.asin(angle_ac_arg);
+
+    const angle_eh = omega_val + angle_ac - angle_ah;
+
+    // Circle intersection for robustness (ensures distance == d)
+    const dx = s_val - x1;
+    const dy = t_val - y1;
+    let dist = Math.sqrt(dx*dx + dy*dy);
+    let m_val, n_val;
+    if (dist < 1e-9) {
+        m_val = x1 + e * Math.cos(angle_eh);
+        n_val = y1 + e * Math.sin(angle_eh);
+    } else if (dist > (d + e) || dist < Math.abs(d - e)) {
+        m_val = x1 + e * Math.cos(angle_eh);
+        n_val = y1 + e * Math.sin(angle_eh);
+    } else {
+        const a = (e*e - d*d + dist*dist) / (2*dist);
+        const h = Math.sqrt(Math.max(0, e*e - a*a));
+        const xm = x1 + a*dx/dist;
+        const ym = y1 + a*dy/dist;
+        const m1 = xm + h*dy/dist;
+        const n1 = ym - h*dx/dist;
+        const m2 = xm - h*dy/dist;
+        const n2 = ym + h*dx/dist;
+        const dist1 = Math.sqrt((m1-x2)**2 + (n1-y2)**2);
+        const dist2 = Math.sqrt((m2-x2)**2 + (n2-y2)**2);
+        if (dist1 > dist2) { m_val = m1; n_val = n1; } else { m_val = m2; n_val = n2; }
+    }
+    return [s_val, t_val, m_val, n_val];
+}
+
+function linspace(start, end, n) {
+    if (n <= 1) return [start];
+    const arr = [];
+    const step = (end - start) / (n - 1);
+    for (let i = 0; i < n; i++) arr.push(start + step * i);
+    return arr;
+}
+
+function fmt(v) { return v.toFixed(2); }
+
+function update() {
+    const x1 = parseFloat(document.getElementById('x1').value);
+    const y1 = parseFloat(document.getElementById('y1').value);
+    const x2 = parseFloat(document.getElementById('x2').value);
+    const y2 = parseFloat(document.getElementById('y2').value);
+    const b = parseFloat(document.getElementById('b').value);
+    const d = parseFloat(document.getElementById('d').value);
+    const e = parseFloat(document.getElementById('e').value);
+    const theta_start = parseFloat(document.getElementById('theta_start').value);
+    const theta_end = parseFloat(document.getElementById('theta_end').value);
+    const theta_steps = parseInt(document.getElementById('theta_steps').value);
+
+    // update labels
+    document.getElementById('v-x1').textContent = x1.toFixed(1);
+    document.getElementById('v-y1').textContent = y1.toFixed(1);
+    document.getElementById('v-x2').textContent = x2.toFixed(1);
+    document.getElementById('v-y2').textContent = y2.toFixed(1);
+    document.getElementById('v-b').textContent = b.toFixed(1);
+    document.getElementById('v-d').textContent = d.toFixed(1);
+    document.getElementById('v-e').textContent = e.toFixed(1);
+    document.getElementById('v-theta_start').textContent = theta_start.toFixed(2);
+    document.getElementById('v-theta_end').textContent = theta_end.toFixed(2);
+    document.getElementById('v-theta_steps').textContent = theta_steps;
+
+    const theta_range = linspace(theta_start, theta_end, theta_steps);
+    const all_s = [], all_t = [], all_m = [], all_n = [];
+    for (const th of theta_range) {
+        const [s, t, m, n] = calculate_4bar(x1, y1, x2, y2, b, d, e, th);
+        all_s.push(s); all_t.push(t); all_m.push(m); all_n.push(n);
+    }
+
+    // distances
+    const distances = all_s.map((_, i) => Math.sqrt((all_s[i]-all_m[i])**2 + (all_t[i]-all_n[i])**2));
+    const dMin = Math.min(...distances);
+    const dMax = Math.max(...distances);
+    const dMean = distances.reduce((a,c)=>a+c,0)/distances.length;
+    const allClose = distances.every(v => Math.abs(v - d) < 0.01);
+
+    // initial / final positions
+    const s0 = all_s[0], t0 = all_t[0], m0 = all_m[0], n0 = all_n[0];
+    const s1 = all_s[all_s.length-1], t1 = all_t[all_t.length-1], m1 = all_m[all_m.length-1], n1 = all_n[all_n.length-1];
+    const a_len = Math.sqrt((x1-x2)**2 + (y1-y2)**2);
+    const b0_len = Math.sqrt((s0-x2)**2 + (t0-y2)**2);
+    const e0_len = Math.sqrt((m0-x1)**2 + (n0-y1)**2);
+    const d0_len = Math.sqrt((s0-m0)**2 + (t0-n0)**2);
+    const b1_len = Math.sqrt((s1-x2)**2 + (t1-y2)**2);
+    const e1_len = Math.sqrt((m1-x1)**2 + (n1-y1)**2);
+    const d1_len = Math.sqrt((s1-m1)**2 + (t1-n1)**2);
+
+    // Plot 1: Trajectory with initial and final bar positions
+    const traceFixed = { x: [x1, x2], y: [y1, y2], mode: 'markers+text', name: 'Fixed Points', text: ['(x1,y1)','(x2,y2)'], textposition: 'top center', marker: {color: 'red', size: 10}, type: 'scatter' };
+    const traceS = { x: all_s, y: all_t, mode: 'lines', name: 'Point (s,t) trajectory', line: {color: 'blue', width: 2}, type: 'scatter' };
+    const traceM = { x: all_m, y: all_n, mode: 'lines', name: 'Point (m,n) trajectory', line: {color: 'green', width: 2}, type: 'scatter' };
+    // Bars at initial position (theta_start) - solid with markers
+    const traceA = { x: [x1, x2], y: [y1, y2], mode: 'lines', name: 'Bar a (base)', line: {color: '#888', width: 3}, type: 'scatter' };
+    const traceB0 = { x: [x2, s0], y: [y2, t0], mode: 'lines+markers', name: 'Bar b initial', line: {color: '#e67e22', width: 3}, marker: {size: 8, color: '#e67e22'}, type: 'scatter' };
+    const traceE0 = { x: [x1, m0], y: [y1, n0], mode: 'lines+markers', name: 'Bar e initial', line: {color: '#27ae60', width: 3}, marker: {size: 8, color: '#27ae60'}, type: 'scatter' };
+    const traceD0 = { x: [s0, m0], y: [t0, n0], mode: 'lines+markers', name: 'Bar d initial', line: {color: '#8e44ad', width: 3, dash: 'solid'}, marker: {size: 8, color: '#8e44ad'}, type: 'scatter' };
+    // Bars at final position (theta_end) - dashed
+    const traceB1 = { x: [x2, s1], y: [y2, t1], mode: 'lines', name: 'Bar b final', line: {color: '#e67e22', width: 2, dash: 'dash'}, type: 'scatter' };
+    const traceE1 = { x: [x1, m1], y: [y1, n1], mode: 'lines', name: 'Bar e final', line: {color: '#27ae60', width: 2, dash: 'dash'}, type: 'scatter' };
+    const traceD1 = { x: [s1, m1], y: [t1, n1], mode: 'lines', name: 'Bar d final', line: {color: '#8e44ad', width: 2, dash: 'dash'}, type: 'scatter' };
+    // Initial/final point markers with labels
+    const tracePoints0 = { x: [s0, m0], y: [t0, n0], mode: 'markers+text', name: 'Initial (s,t)/(m,n)', text: ['(s0,t0)','(m0,n0)'], textposition: 'bottom center', marker: {color: ['blue','green'], size: 9, symbol: 'diamond'}, type: 'scatter' };
+    const tracePoints1 = { x: [s1, m1], y: [t1, n1], mode: 'markers', name: 'Final (s,t)/(m,n)', marker: {color: ['blue','green'], size: 7, symbol: 'cross', line: {width:2}}, type: 'scatter' };
+
+    Plotly.newPlot('plot-trajectory', [traceA, traceS, traceM, traceB0, traceE0, traceD0, traceB1, traceE1, traceD1, traceFixed, tracePoints0, tracePoints1], {
+        title: '4-bar Trajectory — initial (solid) vs final (dashed) bars',
+        xaxis: {title: 'X', scaleanchor: 'y', scaleratio: 1},
+        yaxis: {title: 'Y'},
+        legend: {x: 0.02, y: 0.98, font: {size: 10}},
+        margin: {l: 50, r: 20, t: 40, b: 40}
+    }, {responsive: true});
+
+    // Plot 2: Verification
+    const traceDist = { x: theta_range, y: distances, mode: 'lines', name: 'Actual distance', line: {color: '#1f77b4', width: 2}, type: 'scatter' };
+    const traceExp = { x: [theta_range[0], theta_range[theta_range.length-1]], y: [d, d], mode: 'lines', name: `Expected (d=${d.toFixed(1)})`, line: {color: 'red', dash: 'dash'}, type: 'scatter' };
+    Plotly.newPlot('plot-verification', [traceDist, traceExp], {
+        title: 'Verification: distance between (s,t) and (m,n)',
+        xaxis: {title: 'Theta (radians)'},
+        yaxis: {title: 'Distance'},
+        margin: {l: 50, r: 20, t: 40, b: 40}
+    }, {responsive: true});
+
+    document.getElementById('verification-stats').textContent =
+`=== Verification ===
+Bar length d: ${d}
+All distances approximately equal to d: ${allClose}
+Distance stats:
+  Min: ${dMin.toFixed(4)}
+  Max: ${dMax.toFixed(4)}
+  Mean: ${dMean.toFixed(4)}`;
+
+    // Position info panel
+    document.getElementById('position-info').innerHTML = `
+<h3 style="margin:0 0 8px 0">Initial & Final Bar Positions</h3>
+<div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; font-size:0.85rem;">
+<div>
+  <div><span class="badge b-a">a</span> Base: (${fmt(x1)},${fmt(y1)}) → (${fmt(x2)},${fmt(y2)}) = <b>${a_len.toFixed(2)}</b></div>
+  <div style="margin-top:8px; font-weight:600;">Initial (θ=${theta_start.toFixed(2)} rad):</div>
+  <div><span class="badge b-b">b</span> (x2,y2)→(s0,t0): (${fmt(x2)},${fmt(y2)}) → (${fmt(s0)},${fmt(t0)}) = <b>${b0_len.toFixed(2)}</b></div>
+  <div><span class="badge b-e">e</span> (x1,y1)→(m0,n0): (${fmt(x1)},${fmt(y1)}) → (${fmt(m0)},${fmt(n0)}) = <b>${e0_len.toFixed(2)}</b></div>
+  <div><span class="badge b-d">d</span> (s0,t0)→(m0,n0): (${fmt(s0)},${fmt(t0)}) → (${fmt(m0)},${fmt(n0)}) = <b>${d0_len.toFixed(2)}</b></div>
+  <div style="margin-top:4px; color:#555;">s0=(${fmt(s0)}, ${fmt(t0)}) &nbsp; m0=(${fmt(m0)}, ${fmt(n0)})</div>
+</div>
+<div>
+  <div style="font-weight:600;">Final (θ=${theta_end.toFixed(2)} rad):</div>
+  <div><span class="badge b-b">b</span> (x2,y2)→(s1,t1): (${fmt(x2)},${fmt(y2)}) → (${fmt(s1)},${fmt(t1)}) = <b>${b1_len.toFixed(2)}</b></div>
+  <div><span class="badge b-e">e</span> (x1,y1)→(m1,n1): (${fmt(x1)},${fmt(y1)}) → (${fmt(m1)},${fmt(n1)}) = <b>${e1_len.toFixed(2)}</b></div>
+  <div><span class="badge b-d">d</span> (s1,t1)→(m1,n1): (${fmt(s1)},${fmt(t1)}) → (${fmt(m1)},${fmt(n1)}) = <b>${d1_len.toFixed(2)}</b></div>
+  <div style="margin-top:4px; color:#555;">s1=(${fmt(s1)}, ${fmt(t1)}) &nbsp; m1=(${fmt(m1)}, ${fmt(n1)})</div>
+  <div style="margin-top:8px;"><span class="badge b-s">s,t</span> blue trajectory &nbsp; <span class="badge b-m">m,n</span> green trajectory</div>
+</div>
+</div>
+<div id="position-stats" style="margin-top:10px;">Fixed:  x1=${fmt(x1)}  y1=${fmt(y1)}   x2=${fmt(x2)}  y2=${fmt(y2)}   |   Initial θ=${theta_start.toFixed(2)} → Final θ=${theta_end.toFixed(2)}   |   Steps=${theta_steps}</div>
+`;
+}
+
+// attach listeners
+for (const id of ['x1','y1','x2','y2','b','d','e','theta_start','theta_end','theta_steps']) {
+    document.getElementById(id).addEventListener('input', update);
+}
+document.getElementById('reset').addEventListener('click', () => {
+    document.getElementById('x1').value = 0.0;
+    document.getElementById('y1').value = 0.0;
+    document.getElementById('x2').value = 5.0;
+    document.getElementById('y2').value = 0.0;
+    document.getElementById('b').value = 5.0;
+    document.getElementById('d').value = 5.0;
+    document.getElementById('e').value = 5.0;
+    document.getElementById('theta_start').value = 0.0;
+    document.getElementById('theta_end').value = 1.57;
+    document.getElementById('theta_steps').value = 10;
+    update();
+});
+update();
+</script>
+</body>
+</html>

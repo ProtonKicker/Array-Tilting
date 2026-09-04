@@ -1,27 +1,43 @@
 ### A Pluto.jl notebook ###
-# v0.19.42
+# v1.0.3
 
 using Markdown
 using InteractiveUtils
+
+# This Pluto notebook uses @bind for interactivity. When running this notebook outside of Pluto, the following 'mock version' of @bind gives bound variables a default value (instead of an error).
+macro bind(def, element)
+    #! format: off
+    return quote
+        local iv = try Base.loaded_modules[Base.PkgId(Base.UUID("6e696c72-6542-2067-7265-42206c756150"), "AbstractPlutoDingetjes")].Bonds.initial_value catch; b -> missing; end
+        local el = $(esc(element))
+        global $(esc(def)) = Core.applicable(Base.get, el) ? Base.get(el) : iv(el)
+        el
+    end
+    #! format: on
+end
 
 # ╔═╡ 3a9f4e1c-8b2d-4f7a-9c1e-3d5b6a7f8c2d
 using PlutoUI, Plots
 
 # ╔═╡ 5c8e2d4f-1a3b-4c6d-8e7f-2a4b5c6d7e8f
 # ╠═╡ skip_as_script = true
+#=╠═╡
 #= md"""
 # 4-bar Trajectory Calculations
 
 Enter the parameters below and see the trajectory plot as theta changes.
 """ =#
+  ╠═╡ =#
 
 # ╔═╡ 7d2e9c8a-4b5a-4d6e-9f8a-1c2b3d4e5f6a
 # ╠═╡ skip_as_script = true
+#=╠═╡
 #= md"""
 ## Parameters
 
 Enter the fixed parameters:
 """ =#
+  ╠═╡ =#
 
 # ╔═╡ 8e3f9d7b-5c6a-4e7d-9f1a-2b3c4d5e6f7a
 @bind x1 Slider(-10.0:0.1:10.0, default=0.0, show_value=true)
@@ -111,13 +127,15 @@ end
 
 # ╔═╡ 6f7a8b9c-0d1e-2f3a-4b5c-6d7e8f9a0b1c
 # ╠═╡ skip_as_script = true
+#=╠═╡
 #= md"""
 ## Verification
 
 The distance between (s,t) and (m,n) should equal d for all theta values.
 """ =#
+  ╠═╡ =#
 
-# ╔═╡ 7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1
+# ╔═╡ 7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1234
 begin
     distances = Float64[]
     for i in eachindex(theta_range)
@@ -140,8 +158,9 @@ begin
     p_verify
 end
 
-# ╔═╡ 8b9c0d1e-2f3a-4b5c-6d7e-8f9a0b1c2
+# ╔═╡ 8b9c0d1e-2f3a-4b5c-6d7e-8f9a0b1c2345
 # ╠═╡ skip_as_script = true
+#=╠═╡
 #= md"""
 ## Summary
 
@@ -152,6 +171,7 @@ end
 
 The verification plot shows the distance between (s,t) and (m,n) should be constant and equal to d.
 """ =#
+  ╠═╡ =#
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -194,7 +214,7 @@ version = "1.40.2"
 # ╟─4d5e6f7a-8b9c-0d1e-2f3a-4b5c6d7e8f9a
 # ╟─5e6f7a8b-9c0d-1e2f-3a4b-5c6d7e8f9a0b
 # ╟─6f7a8b9c-0d1e-2f3a-4b5c-6d7e8f9a0b1c
-# ╟─7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1
-# ╟─8b9c0d1e-2f3a-4b5c-6d7e-8f9a0b1c2
+# ╟─7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1234
+# ╟─8b9c0d1e-2f3a-4b5c-6d7e-8f9a0b1c2345
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
