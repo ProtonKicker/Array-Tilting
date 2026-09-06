@@ -51,3 +51,4 @@ n = y_1 + e * sin ( angle_eh)
 # verify
 
 d - sqrt ( ( s - m ) ^ 2 + ( t - n) ^ 2 ) # should yield 0
+
