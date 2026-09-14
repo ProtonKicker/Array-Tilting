@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D Mechanism & Bar Physics Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #ffffff;
+        }
+        canvas {
+            touch-action: none;
+        }
+    </style>
+</head>
+<body class="bg-white text-gray-800 font-sans overflow-hidden select-none w-screen h-screen m-0 p-0">
+
+    <div class="fixed top-4 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-md shadow-md border border-gray-200 rounded-full px-5 py-2 flex items-center space-x-3 z-30">
+        <!-- Mode Switcher -->
+        <div class="bg-gray-100 p-1 rounded-full flex items-center space-x-1 border border-gray-200">
+            <button id="btnEdit" class="px-3 py-1 rounded-full text-xs font-semibold transition-all bg-white text-gray-800 shadow-sm">
+                ✏️ EDIT
+            </button>
+            <button id="btnPlay" class="px-3 py-1 rounded-full text-xs font-semibold transition-all text-gray-500 hover:text-gray-800">
+                ▶ PLAY
+            </button>
+        </div>
+
+        <div class="h-4 w-px bg-gray-200"></div>
+
+        <!-- Move Toggle (Play Mode Only) -->
+        <button id="btnAutoMove" class="hidden px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100 transition-all flex items-center space-x-1.5">
+            <span id="autoMoveIcon">🔄</span>
+            <span id="autoMoveLabel">Move: ON</span>
+        </button>
+
+        <!-- Actions -->
+        <button id="btnReset" title="Reset Simulation state" class="p-1.5 rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-800 transition-all">
+            ↺
+        </button>
+        <button id="btnClearTrace" class="px-3 py-1 rounded-full text-xs font-medium text-gray-600 hover:bg-gray-100 transition-all border border-gray-200">
+            🪄 Clear Path
+        </button>
+    </div>
+
+    <div class="fixed top-4 right-4 bg-white/95 backdrop-blur-md border border-gray-200 shadow-md rounded-full px-4 py-2 z-30 flex items-center space-x-2">
+        <label class="text-xs font-medium text-gray-600 flex items-center space-x-2 cursor-pointer">
+            <input type="checkbox" id="chkGridSnap" checked class="w-3.5 h-3.5 text-indigo-600 rounded focus:ring-0">
+            <span>Grid Snap</span>
+        </label>
+    </div>
+
+    <!-- Canvases -->
+    <canvas id="traceCanvas" class="absolute inset-0 w-full h-full pointer-events-none z-0"></canvas>
+    <canvas id="simCanvas" class="absolute inset-0 w-full h-full z-10 cursor-crosshair"></canvas>
+
+    <script>
+        const GRID_SIZE = 20;
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+
+        let simCanvas, ctx;
+        let traceCanvas, traceCtx;
+
+        let isPlayMode = false;
+        let isAutoMove = true;
+        let gridSnap = true;
+
+        let nodes = [];
+        let bars = [];
+
+        let selectedNode = null;
+        let hoverNode = null;
+        let hoverBar = null;
+        let isDragging = false;
+        let dragOffset = { x: 0, y: 0 };
+
+        let creatingBarStartNode = null;
+
+        // Auto move oscillation state
+        let autoMoveTime = 0;
+        let initialAngles = new Map(); // stores initial angles for driver nodes
+
+        class Node {
+            constructor(x, y, fixed = false, drawing = false) {
+                this.x = x;
+                this.y = y;
+                this.prevX = x;
+                this.prevY = y;
+                this.vx = 0;
+                this.vy = 0;
+                this.fixed = fixed;
+                this.drawing = drawing;
+                this.tracePath = [];
+                
+                // Node on bar binding
+                this.parentBar = null;
+                this.barU = 0; // fraction along parent bar [0, 1]
+            }
+
+            snapToGrid() {
+                if (gridSnap) {
+                    this.x = Math.round(this.x / GRID_SIZE) * GRID_SIZE;
+                    this.y = Math.round(this.y / GRID_SIZE) * GRID_SIZE;
+                }
+            }
+        }
+
+        class Bar {
+            constructor(nodeA, nodeB) {
+                this.nodeA = nodeA;
+                this.nodeB = nodeB;
+                this.length = Math.hypot(nodeB.x - nodeA.x, nodeB.y - nodeA.y);
+            }
+
+            updateLength() {
+                this.length = Math.hypot(this.nodeB.x - this.nodeA.x, this.nodeB.y - this.nodeA.y);
+            }
+        }
+
+        function resizeCanvas() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+
+            if (simCanvas) {
+                simCanvas.width = width;
+                simCanvas.height = height;
+            }
+            if (traceCanvas) {
+                traceCanvas.width = width;
+                traceCanvas.height = height;
+                redrawTrace();
+            }
+        }
+
+        function clearTrace() {
+            if (traceCtx) {
+                traceCtx.clearRect(0, 0, width, height);
+            }
+            nodes.forEach(n => {
+                n.tracePath = [];
+            });
+        }
+
+        function redrawTrace() {
+            if (!traceCtx) return;
+            traceCtx.clearRect(0, 0, width, height);
+            
+            nodes.forEach(node => {
+                if (node.drawing && node.tracePath.length > 1) {
+                    traceCtx.beginPath();
+                    traceCtx.strokeStyle = '#f97316'; // distinct orange arc trace
+                    traceCtx.lineWidth = 2.5;
+                    traceCtx.lineCap = 'round';
+                    traceCtx.lineJoin = 'round';
+                    traceCtx.moveTo(node.tracePath[0].x, node.tracePath[0].y);
+                    for (let i = 1; i < node.tracePath.length; i++) {
+                        traceCtx.lineTo(node.tracePath[i].x, node.tracePath[i].y);
+                    }
+                    traceCtx.stroke();
+                }
+            });
+        }
+
+        function resetToDefaultState() {
+            nodes = [];
+            bars = [];
+            selectedNode = null;
+            hoverNode = null;
+            hoverBar = null;
+            creatingBarStartNode = null;
+            autoMoveTime = 0;
+            initialAngles.clear();
+            clearTrace();
+
+            // Default setup: 45 degree single bar with fixed bottom node and drawing top node
+            const startX = width / 2 - 50;
+            const startY = height / 2 + 50;
+            const length = 120;
+            const angle = -Math.PI / 4; // -45 degrees (pointing up-right)
+
+            const nodeA = new Node(startX, startY, true, false); // bottom fixed
+            const nodeB = new Node(startX + Math.cos(angle) * length, startY + Math.sin(angle) * length, false, true); // top drawing
+
+            nodes.push(nodeA, nodeB);
+            bars.push(new Bar(nodeA, nodeB));
+
+            recordInitialAngles();
+        }
+
+        function recordInitialAngles() {
+            initialAngles.clear();
+            // Store initial angle for free nodes connected to a fixed node
+            bars.forEach(bar => {
+                if (bar.nodeA.fixed && !bar.nodeB.fixed) {
+                    const angle = Math.atan2(bar.nodeB.y - bar.nodeA.y, bar.nodeB.x - bar.nodeA.x);
+                    initialAngles.set(bar.nodeB, { centerNode: bar.nodeA, baseAngle: angle, radius: bar.length });
+                } else if (bar.nodeB.fixed && !bar.nodeA.fixed) {
+                    const angle = Math.atan2(bar.nodeA.y - bar.nodeB.y, bar.nodeA.x - bar.nodeB.x);
+                    initialAngles.set(bar.nodeA, { centerNode: bar.nodeB, baseAngle: angle, radius: bar.length });
+                }
+            });
+        }
+
+        function updatePhysics() {
+            if (!isPlayMode) return;
+
+            // 1. Auto-move swing logic (60-degree sinusoidal oscillation = PI / 3)
+            if (isAutoMove) {
+                autoMoveTime += 0.03;
+                const swingAngleOffset = Math.sin(autoMoveTime) * (Math.PI / 3); // 60 degrees arc swing
+
+                initialAngles.forEach((driverData, node) => {
+                    const targetAngle = driverData.baseAngle + swingAngleOffset;
+                    node.x = driverData.centerNode.x + Math.cos(targetAngle) * driverData.radius;
+                    node.y = driverData.centerNode.y + Math.sin(targetAngle) * driverData.radius;
+                });
+            }
+
+            // Update nodes attached to parent bars
+            nodes.forEach(node => {
+                if (node.parentBar) {
+                    const pA = node.parentBar.nodeA;
+                    const pB = node.parentBar.nodeB;
+                    node.x = pA.x + (pB.x - pA.x) * node.barU;
+                    node.y = pA.y + (pB.y - pA.y) * node.barU;
+                }
+            });
+
+            // 2. High-precision Position-Based Dynamics (200 substeps for zero-flex rigidity)
+            const iterations = 200;
+            for (let iter = 0; iter < iterations; iter++) {
+                bars.forEach(bar => {
+                    const nodeA = bar.nodeA;
+                    const nodeB = bar.nodeB;
+
+                    const dx = nodeB.x - nodeA.x;
+                    const dy = nodeB.y - nodeA.y;
+                    const dist = Math.hypot(dx, dy) || 0.001;
+                    const delta = (dist - bar.length) / dist;
+
+                    const moveX = dx * 0.5 * delta;
+                    const moveY = dy * 0.5 * delta;
+
+                    // Determine mobility
+                    const aIsLocked = nodeA.fixed || (isAutoMove && initialAngles.has(nodeA)) || (isDragging && selectedNode === nodeA);
+                    const bIsLocked = nodeB.fixed || (isAutoMove && initialAngles.has(nodeB)) || (isDragging && selectedNode === nodeB);
+
+                    if (!aIsLocked && !bIsLocked) {
+                        nodeA.x += moveX;
+                        nodeA.y += moveY;
+                        nodeB.x -= moveX;
+                        nodeB.y -= moveY;
+                    } else if (aIsLocked && !bIsLocked) {
+                        nodeB.x -= moveX * 2;
+                        nodeB.y -= moveY * 2;
+                    } else if (!aIsLocked && bIsLocked) {
+                        nodeA.x += moveX * 2;
+                        nodeA.y += moveY * 2;
+                    }
+                });
+
+                // Re-enforce child nodes on bars
+                nodes.forEach(node => {
+                    if (node.parentBar) {
+                        const pA = node.parentBar.nodeA;
+                        const pB = node.parentBar.nodeB;
+                        node.x = pA.x + (pB.x - pA.x) * node.barU;
+                        node.y = pA.y + (pB.y - pA.y) * node.barU;
+                    }
+                });
+            }
+
+            // 3. Record trajectory traces
+            nodes.forEach(node => {
+                if (node.drawing) {
+                    const lastPt = node.tracePath[node.tracePath.length - 1];
+                    if (!lastPt || Math.hypot(node.x - lastPt.x, node.y - lastPt.y) > 1.5) {
+                        node.tracePath.push({ x: node.x, y: node.y });
+                        redrawTrace();
+                    }
+                }
+            });
+        }
+
+        function drawGrid() {
+            ctx.strokeStyle = '#f1f5f9';
+            ctx.lineWidth = 1;
+
+            ctx.beginPath();
+            for (let x = 0; x < width; x += GRID_SIZE) {
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+            }
+            for (let y = 0; y < height; y += GRID_SIZE) {
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+            }
+            ctx.stroke();
+        }
+
+        function drawScene() {
+            ctx.clearRect(0, 0, width, height);
+
+            // Background Grid
+            drawGrid();
+
+            // Render Linkage Bars
+            bars.forEach(bar => {
+                const isHovered = (hoverBar === bar);
+                ctx.beginPath();
+                ctx.moveTo(bar.nodeA.x, bar.nodeA.y);
+                ctx.lineTo(bar.nodeB.x, bar.nodeB.y);
+                ctx.strokeStyle = isHovered ? '#6366f1' : '#475569';
+                ctx.lineWidth = isHovered ? 7 : 5;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+            });
+
+            // Render Temporary Bar Construction Line in Edit Mode
+            if (!isPlayMode && creatingBarStartNode) {
+                ctx.beginPath();
+                ctx.moveTo(creatingBarStartNode.x, creatingBarStartNode.y);
+                ctx.lineTo(dragOffset.currentX || creatingBarStartNode.x, dragOffset.currentY || creatingBarStartNode.y);
+                ctx.strokeStyle = '#94a3b8';
+                ctx.lineWidth = 3;
+                ctx.setLineDash([6, 6]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            // Render Nodes
+            nodes.forEach(node => {
+                const isHovered = (hoverNode === node);
+                const isSelected = (selectedNode === node);
+
+                // Drawing filter indicator glow
+                if (node.drawing) {
+                    ctx.beginPath();
+                    ctx.arc(node.x, node.y, 11, 0, Math.PI * 2);
+                    ctx.strokeStyle = '#f97316';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+
+                // Node circle
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, 6, 0, Math.PI * 2);
+                ctx.fillStyle = node.fixed ? '#1e293b' : (isHovered ? '#4f46e5' : '#334155');
+                ctx.fill();
+
+                // Grounded fixed anchor symbol
+                if (node.fixed) {
+                    ctx.beginPath();
+                    ctx.arc(node.x, node.y, 10, 0, Math.PI * 2);
+                    ctx.strokeStyle = '#1e293b';
+                    ctx.lineWidth = 1.5;
+                    ctx.setLineDash([3, 3]);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+
+                if (isSelected) {
+                    ctx.beginPath();
+                    ctx.arc(node.x, node.y, 13, 0, Math.PI * 2);
+                    ctx.strokeStyle = '#3b82f6';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+            });
+        }
+
+        function gameLoop() {
+            updatePhysics();
+            drawScene();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function getMousePos(e) {
+            const rect = simCanvas.getBoundingClientRect();
+            return {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
+        }
+
+        function findHoveredElement(pos) {
+            hoverNode = null;
+            hoverBar = null;
+
+            // Check node hover first
+            for (let node of nodes) {
+                if (Math.hypot(node.x - pos.x, node.y - pos.y) <= 12) {
+                    hoverNode = node;
+                    return;
+                }
+            }
+
+            // Check bar hover
+            for (let bar of bars) {
+                const dist = distToSegment(pos, bar.nodeA, bar.nodeB);
+                if (dist.distance <= 8) {
+                    hoverBar = bar;
+                    return;
+                }
+            }
+        }
+
+        function distToSegment(p, v, w) {
+            const l2 = (w.x - v.x) ** 2 + (w.y - v.y) ** 2;
+            if (l2 === 0) return { distance: Math.hypot(p.x - v.x, p.y - v.y), u: 0 };
+            let u = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+            u = Math.max(0, Math.min(1, u));
+            const projX = v.x + u * (w.x - v.x);
+            const projY = v.y + u * (w.y - v.y);
+            return {
+                distance: Math.hypot(p.x - projX, p.y - projY),
+                u: u,
+                projX: projX,
+                projY: projY
+            };
+        }
+
+        function onMouseDown(e) {
+            const pos = getMousePos(e);
+            dragOffset.currentX = pos.x;
+            dragOffset.currentY = pos.y;
+
+            findHoveredElement(pos);
+
+            if (isPlayMode) {
+                // Play Mode dragging
+                if (hoverNode) {
+                    selectedNode = hoverNode;
+                    isDragging = true;
+                }
+            } else {
+                // Edit Mode interaction
+                if (hoverNode) {
+                    if (e.shiftKey) {
+                        // Toggle filters on Shift+Click: Fixed -> Drawing -> Normal
+                        if (!hoverNode.fixed && !hoverNode.drawing) {
+                            hoverNode.fixed = true;
+                        } else if (hoverNode.fixed) {
+                            hoverNode.fixed = false;
+                            hoverNode.drawing = true;
+                        } else {
+                            hoverNode.drawing = false;
+                        }
+                        clearTrace();
+                        recordInitialAngles();
+                    } else if (e.altKey) {
+                        // Delete Node on Alt+Click
+                        deleteNode(hoverNode);
+                    } else {
+                        // Start bar creation or dragging
+                        creatingBarStartNode = hoverNode;
+                        selectedNode = hoverNode;
+                        isDragging = true;
+                    }
+                } else if (hoverBar) {
+                    if (e.altKey) {
+                        // Delete Bar
+                        deleteBar(hoverBar);
+                    } else {
+                        // Insert node on existing bar
+                        const proj = distToSegment(pos, hoverBar.nodeA, hoverBar.nodeB);
+                        const newNode = new Node(proj.projX, proj.projY);
+                        newNode.parentBar = hoverBar;
+                        newNode.barU = proj.u;
+                        nodes.push(newNode);
+                        clearTrace();
+                    }
+                } else {
+                    // Create new free node in space
+                    let newNode = new Node(pos.x, pos.y);
+                    if (gridSnap) newNode.snapToGrid();
+                    nodes.push(newNode);
+                    creatingBarStartNode = newNode;
+                    selectedNode = newNode;
+                    isDragging = true;
+                    clearTrace();
+                }
+            }
+        }
+
+        function onMouseMove(e) {
+            const pos = getMousePos(e);
+            dragOffset.currentX = pos.x;
+            dragOffset.currentY = pos.y;
+
+            findHoveredElement(pos);
+
+            if (isDragging && selectedNode) {
+                if (isPlayMode) {
+                    if (!selectedNode.fixed) {
+                        selectedNode.x = pos.x;
+                        selectedNode.y = pos.y;
+                    }
+                } else {
+                    // Edit Mode move node
+                    selectedNode.x = pos.x;
+                    selectedNode.y = pos.y;
+                    if (gridSnap && !selectedNode.parentBar) {
+                        selectedNode.snapToGrid();
+                    }
+                    // Update bar lengths attached to this node
+                    bars.forEach(b => {
+                        if (b.nodeA === selectedNode || b.nodeB === selectedNode) {
+                            b.updateLength();
+                        }
+                    });
+                    clearTrace();
+                    recordInitialAngles();
+                }
+            }
+        }
+
+        function onMouseUp(e) {
+            const pos = getMousePos(e);
+
+            if (!isPlayMode && creatingBarStartNode) {
+                findHoveredElement(pos);
+                if (hoverNode && hoverNode !== creatingBarStartNode) {
+                    // Create Bar between starting node and hover node
+                    const existingBar = bars.find(b =>
+                        (b.nodeA === creatingBarStartNode && b.nodeB === hoverNode) ||
+                        (b.nodeA === hoverNode && b.nodeB === creatingBarStartNode)
+                    );
+                    if (!existingBar) {
+                        bars.push(new Bar(creatingBarStartNode, hoverNode));
+                        clearTrace();
+                        recordInitialAngles();
+                    }
+                }
+            }
+
+            isDragging = false;
+            selectedNode = null;
+            creatingBarStartNode = null;
+        }
+
+        function deleteNode(node) {
+            nodes = nodes.filter(n => n !== node);
+            bars = bars.filter(b => b.nodeA !== node && b.nodeB !== node);
+            nodes.forEach(n => {
+                if (n.parentBar && (n.parentBar.nodeA === node || n.parentBar.nodeB === node)) {
+                    n.parentBar = null;
+                }
+            });
+            clearTrace();
+            recordInitialAngles();
+        }
+
+        function deleteBar(bar) {
+            bars = bars.filter(b => b !== bar);
+            nodes.forEach(n => {
+                if (n.parentBar === bar) {
+                    n.parentBar = null;
+                }
+            });
+            clearTrace();
+            recordInitialAngles();
+        }
+
+        window.onload = function() {
+            simCanvas = document.getElementById('simCanvas');
+            ctx = simCanvas.getContext('2d');
+
+            traceCanvas = document.getElementById('traceCanvas');
+            traceCtx = traceCanvas.getContext('2d');
+
+            // UI Elements
+            const btnEdit = document.getElementById('btnEdit');
+            const btnPlay = document.getElementById('btnPlay');
+            const btnAutoMove = document.getElementById('btnAutoMove');
+            const autoMoveLabel = document.getElementById('autoMoveLabel');
+            const btnReset = document.getElementById('btnReset');
+            const btnClearTrace = document.getElementById('btnClearTrace');
+            const chkGridSnap = document.getElementById('chkGridSnap');
+
+            // Mode Switching
+            btnEdit.addEventListener('click', () => {
+                isPlayMode = false;
+                btnEdit.className = "px-3 py-1 rounded-full text-xs font-semibold transition-all bg-white text-gray-800 shadow-sm";
+                btnPlay.className = "px-3 py-1 rounded-full text-xs font-semibold transition-all text-gray-500 hover:text-gray-800";
+                btnAutoMove.classList.add('hidden');
+                clearTrace();
+            });
+
+            btnPlay.addEventListener('click', () => {
+                isPlayMode = true;
+                btnPlay.className = "px-3 py-1 rounded-full text-xs font-semibold transition-all bg-white text-gray-800 shadow-sm";
+                btnEdit.className = "px-3 py-1 rounded-full text-xs font-semibold transition-all text-gray-500 hover:text-gray-800";
+                btnAutoMove.classList.remove('hidden');
+                recordInitialAngles();
+                autoMoveTime = 0;
+                clearTrace();
+            });
+
+            // Move Toggle
+            btnAutoMove.addEventListener('click', () => {
+                isAutoMove = !isAutoMove;
+                autoMoveLabel.textContent = isAutoMove ? "Move: ON" : "Move: OFF";
+                btnAutoMove.className = isAutoMove 
+                    ? "px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100 transition-all flex items-center space-x-1.5"
+                    : "px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-500 border border-gray-200 hover:bg-gray-200 transition-all flex items-center space-x-1.5";
+            });
+
+            // Reset & Clear Path
+            btnReset.addEventListener('click', () => {
+                resetToDefaultState();
+            });
+
+            btnClearTrace.addEventListener('click', () => {
+                clearTrace();
+            });
+
+            chkGridSnap.addEventListener('change', (e) => {
+                gridSnap = e.target.checked;
+            });
+
+            // Canvas Interaction Listeners
+            simCanvas.addEventListener('mousedown', onMouseDown);
+            simCanvas.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
+
+            // Touch support
+            simCanvas.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    onMouseDown(e.touches[0]);
+                }
+            });
+            simCanvas.addEventListener('touchmove', (e) => {
+                if (e.touches.length === 1) {
+                    onMouseMove(e.touches[0]);
+                }
+            });
+            window.addEventListener('touchend', onMouseUp);
+
+            window.addEventListener('resize', resizeCanvas);
+
+            // Initialize scene and start game loop
+            resizeCanvas();
+            resetToDefaultState();
+            requestAnimationFrame(gameLoop);
+        };
+    </script>
+</body>
+</html>
