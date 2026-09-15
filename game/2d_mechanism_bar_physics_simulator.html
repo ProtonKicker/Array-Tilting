@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>2D Mechanism & Bar Physics Simulator</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
     <style>
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -13,9 +14,65 @@
         canvas {
             touch-action: none;
         }
+        .tool-btn .tool-icon {
+            width: 22px;
+            height: 22px;
+            font-size: 22px;
+            line-height: 22px;
+        }
+        #codeEditor {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        }
     </style>
 </head>
 <body class="bg-white text-gray-800 font-sans overflow-hidden select-none w-screen h-screen m-0 p-0">
+
+    <div id="leftToolbar" class="fixed left-2 top-1/2 -translate-y-1/2 bg-white/96 backdrop-blur-md shadow-[0_8px_24px_rgba(15,23,42,0.11)] border border-slate-200 rounded-[1.75rem] px-2 py-3 z-30 flex flex-col items-center gap-1 w-[84px]">
+        <button id="toolSelect" class="tool-btn w-full rounded-xl transition-all text-indigo-600" title="Move / Select">
+            <span class="flex flex-col items-center gap-1.5 py-2">
+                <i class="tool-icon fa-solid fa-arrow-pointer" aria-hidden="true"></i>
+                <span class="text-[9px] font-semibold tracking-[0.14em] uppercase">Move</span>
+            </span>
+        </button>
+        <button id="toolNode" class="tool-btn w-full rounded-xl transition-all text-slate-600 hover:bg-slate-50" title="Node">
+            <span class="flex flex-col items-center gap-1.5 py-2">
+                <i class="tool-icon fa-solid fa-location-crosshairs" aria-hidden="true"></i>
+                <span class="text-[9px] font-semibold tracking-[0.14em] uppercase">Node</span>
+            </span>
+        </button>
+        <button id="toolBar" class="tool-btn w-full rounded-xl transition-all text-slate-600 hover:bg-slate-50" title="Bar">
+            <span class="flex flex-col items-center gap-1.5 py-2">
+                <i class="tool-icon fa-solid fa-share-nodes" aria-hidden="true"></i>
+                <span class="text-[9px] font-semibold tracking-[0.14em] uppercase">Bar</span>
+            </span>
+        </button>
+        <button id="toolGroup" class="tool-btn w-full rounded-xl transition-all text-slate-600 hover:bg-slate-50" title="Group">
+            <span class="flex flex-col items-center gap-1.5 py-2">
+                <i class="tool-icon fa-solid fa-link" aria-hidden="true"></i>
+                <span class="text-[9px] font-semibold tracking-[0.14em] uppercase">Grp</span>
+            </span>
+        </button>
+        <div class="w-10 h-px bg-slate-200 my-0.5"></div>
+        <button id="toolFix" class="tool-btn w-full rounded-xl transition-all text-slate-600 hover:bg-slate-50" title="Fix">
+            <span class="flex flex-col items-center gap-1.5 py-2">
+                <i class="tool-icon fa-solid fa-thumbtack" aria-hidden="true"></i>
+                <span class="text-[9px] font-semibold tracking-[0.14em] uppercase">Fix</span>
+            </span>
+        </button>
+        <button id="toolDraw" class="tool-btn w-full rounded-xl transition-all text-slate-600 hover:bg-slate-50" title="Draw">
+            <span class="flex flex-col items-center gap-1.5 py-2">
+                <i class="tool-icon fa-solid fa-pen-nib" aria-hidden="true"></i>
+                <span class="text-[9px] font-semibold tracking-[0.14em] uppercase">Draw</span>
+            </span>
+        </button>
+        <div class="w-10 h-px bg-slate-200 my-0.5"></div>
+        <button id="toolDelete" class="tool-btn w-full rounded-xl transition-all text-slate-600 hover:bg-slate-50" title="Delete">
+            <span class="flex flex-col items-center gap-1.5 py-2">
+                <i class="tool-icon fa-regular fa-trash-can" aria-hidden="true"></i>
+                <span class="text-[9px] font-semibold tracking-[0.14em] uppercase">Del</span>
+            </span>
+        </button>
+    </div>
 
     <div class="fixed top-4 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-md shadow-md border border-gray-200 rounded-full px-5 py-2 flex items-center space-x-3 z-30">
         <!-- Mode Switcher -->
@@ -36,40 +93,52 @@
             <span id="autoMoveLabel">Move: ON</span>
         </button>
 
-        <!-- Actions -->
-        <button id="btnReset" title="Reset Simulation state" class="p-1.5 rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-800 transition-all">
-            ↺
-        </button>
         <button id="btnClearTrace" class="px-3 py-1 rounded-full text-xs font-medium text-gray-600 hover:bg-gray-100 transition-all border border-gray-200">
             🪄 Clear Path
         </button>
     </div>
 
-    <div class="fixed top-4 right-4 bg-white/95 backdrop-blur-md border border-gray-200 shadow-md rounded-full px-4 py-2 z-30 flex items-center space-x-2">
-        <label class="text-xs font-medium text-gray-600 flex items-center space-x-2 cursor-pointer">
-            <input type="checkbox" id="chkGridSnap" checked class="w-3.5 h-3.5 text-indigo-600 rounded focus:ring-0">
-            <span>Grid Snap</span>
-        </label>
-    </div>
+    <aside id="codeSidebar" class="fixed right-4 top-4 bottom-4 w-[360px] bg-white/96 backdrop-blur-md shadow-[0_10px_28px_rgba(15,23,42,0.12)] border border-slate-200 rounded-[1.75rem] z-30 flex flex-col overflow-hidden">
+        <div class="px-4 py-4 border-b border-slate-200">
+            <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Mechanism Code</div>
+            <div class="mt-1 text-sm font-semibold text-slate-700">Python-Compatible Graph</div>
+            <div class="mt-1 text-[12px] leading-5 text-slate-400">Edit the mechanism as code, then apply it back to the graph.</div>
+        </div>
+        <div class="px-4 py-3 border-b border-slate-200 flex items-center gap-2">
+            <button id="btnApplyCode" class="px-3 py-1.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100 transition-all">Apply</button>
+            <button id="btnSyncCode" class="px-3 py-1.5 rounded-full text-xs font-medium text-slate-600 border border-slate-200 hover:bg-slate-50 transition-all">From Graph</button>
+            <button id="btnCopyCode" class="px-3 py-1.5 rounded-full text-xs font-medium text-slate-600 border border-slate-200 hover:bg-slate-50 transition-all">Copy</button>
+            <span id="codeStatus" class="ml-auto text-[11px] font-medium text-slate-400">Synced</span>
+        </div>
+        <textarea id="codeEditor" spellcheck="false" class="flex-1 w-full resize-none bg-transparent px-4 py-4 text-[12px] leading-5 text-slate-700 outline-none"></textarea>
+    </aside>
 
     <!-- Canvases -->
     <canvas id="traceCanvas" class="absolute inset-0 w-full h-full pointer-events-none z-0"></canvas>
     <canvas id="simCanvas" class="absolute inset-0 w-full h-full z-10 cursor-crosshair"></canvas>
 
     <script>
-        const GRID_SIZE = 20;
+        const SOLVER_ITERATIONS = 2400;
+        const SOLVER_TOLERANCE = 0.0005;
+        const SOLVER_ACCEPT_ERROR = 0.02;
         let width = window.innerWidth;
         let height = window.innerHeight;
 
         let simCanvas, ctx;
         let traceCanvas, traceCtx;
+        let codeEditor, codeStatus;
 
         let isPlayMode = false;
         let isAutoMove = true;
-        let gridSnap = true;
+        let currentTool = 'select';
+        let nextNodeId = 1;
+        let nextBarId = 1;
+        let nextGroupId = 1;
+        let codeDirty = false;
 
         let nodes = [];
         let bars = [];
+        let groups = [];
 
         let selectedNode = null;
         let hoverNode = null;
@@ -78,13 +147,25 @@
         let dragOffset = { x: 0, y: 0 };
 
         let creatingBarStartNode = null;
+        let creatingGroupStartBar = null;
 
         // Auto move oscillation state
         let autoMoveTime = 0;
         let initialAngles = new Map(); // stores initial angles for driver nodes
 
+        const TOOL_CURSOR = {
+            select: 'grab',
+            node: 'crosshair',
+            bar: 'crosshair',
+            group: 'pointer',
+            fix: 'pointer',
+            draw: 'pointer',
+            delete: 'not-allowed'
+        };
+
         class Node {
-            constructor(x, y, fixed = false, drawing = false) {
+            constructor(x, y, fixed = false, drawing = false, id = null, jointType = 'revolute') {
+                this.id = id || `n${nextNodeId++}`;
                 this.x = x;
                 this.y = y;
                 this.prevX = x;
@@ -92,24 +173,16 @@
                 this.vx = 0;
                 this.vy = 0;
                 this.fixed = fixed;
+                this.jointType = jointType;
                 this.drawing = drawing;
                 this.tracePath = [];
-                
-                // Node on bar binding
-                this.parentBar = null;
-                this.barU = 0; // fraction along parent bar [0, 1]
             }
 
-            snapToGrid() {
-                if (gridSnap) {
-                    this.x = Math.round(this.x / GRID_SIZE) * GRID_SIZE;
-                    this.y = Math.round(this.y / GRID_SIZE) * GRID_SIZE;
-                }
-            }
         }
 
         class Bar {
-            constructor(nodeA, nodeB) {
+            constructor(nodeA, nodeB, id = null) {
+                this.id = id || `b${nextBarId++}`;
                 this.nodeA = nodeA;
                 this.nodeB = nodeB;
                 this.length = Math.hypot(nodeB.x - nodeA.x, nodeB.y - nodeA.y);
@@ -117,6 +190,15 @@
 
             updateLength() {
                 this.length = Math.hypot(this.nodeB.x - this.nodeA.x, this.nodeB.y - this.nodeA.y);
+            }
+        }
+
+        class BarGroup {
+            constructor(barA, barB, diagonalLength = null, id = null) {
+                this.id = id || `g${nextGroupId++}`;
+                this.barA = barA;
+                this.barB = barB;
+                this.diagonalLength = diagonalLength;
             }
         }
 
@@ -164,15 +246,517 @@
             });
         }
 
-        function resetToDefaultState() {
-            nodes = [];
-            bars = [];
+        function createNodeAt(x, y) {
+            const node = new Node(x, y);
+            nodes.push(node);
+            clearTrace();
+            recordInitialAngles();
+            refreshCodeFromGraph();
+            return node;
+        }
+
+        function toggleNodeFixed(node) {
+            node.fixed = !node.fixed;
+            if (node.fixed) {
+                node.drawing = false;
+            }
+            clearTrace();
+            recordInitialAngles();
+            refreshCodeFromGraph();
+        }
+
+        function toggleNodeDrawing(node) {
+            node.drawing = !node.drawing;
+            clearTrace();
+            recordInitialAngles();
+            refreshCodeFromGraph();
+        }
+
+        function tryCreateBar(nodeA, nodeB) {
+            if (!nodeA || !nodeB || nodeA === nodeB) return false;
+            const existingBar = bars.find(bar =>
+                (bar.nodeA === nodeA && bar.nodeB === nodeB) ||
+                (bar.nodeA === nodeB && bar.nodeB === nodeA)
+            );
+            if (existingBar) return false;
+            bars.push(new Bar(nodeA, nodeB));
+            clearTrace();
+            recordInitialAngles();
+            refreshCodeFromGraph();
+            return true;
+        }
+
+        function getBarsShareNode(barA, barB) {
+            const sharedNodes = [barA.nodeA, barA.nodeB].filter(node => node === barB.nodeA || node === barB.nodeB);
+            return sharedNodes.length === 1 ? sharedNodes[0] : null;
+        }
+
+        function getGroupEndpoints(group) {
+            const sharedNode = getBarsShareNode(group.barA, group.barB);
+            if (!sharedNode) return null;
+
+            const endA = group.barA.nodeA === sharedNode ? group.barA.nodeB : group.barA.nodeA;
+            const endB = group.barB.nodeA === sharedNode ? group.barB.nodeB : group.barB.nodeA;
+
+            return { sharedNode, endA, endB };
+        }
+
+        function getExistingGroup(barA, barB) {
+            return groups.find(group =>
+                (group.barA === barA && group.barB === barB) ||
+                (group.barA === barB && group.barB === barA)
+            );
+        }
+
+        function barBelongsToAnyGroup(bar) {
+            return groups.some(group => group.barA === bar || group.barB === bar);
+        }
+
+        function updateGroupDiagonalLengths() {
+            groups.forEach(group => {
+                const endpoints = getGroupEndpoints(group);
+                if (!endpoints) return;
+                group.diagonalLength = Math.hypot(endpoints.endB.x - endpoints.endA.x, endpoints.endB.y - endpoints.endA.y);
+            });
+        }
+
+        function toggleBarGroup(barA, barB) {
+            if (!barA || !barB || barA === barB) return false;
+            if (!getBarsShareNode(barA, barB)) return false;
+
+            const existingGroup = getExistingGroup(barA, barB);
+            if (existingGroup) {
+                groups = groups.filter(group => group !== existingGroup);
+                refreshCodeFromGraph();
+                return true;
+            }
+
+            const endpoints = {
+                endA: barA.nodeA === getBarsShareNode(barA, barB) ? barA.nodeB : barA.nodeA,
+                endB: barB.nodeA === getBarsShareNode(barA, barB) ? barB.nodeB : barB.nodeA
+            };
+            const diagonalLength = Math.hypot(endpoints.endB.x - endpoints.endA.x, endpoints.endB.y - endpoints.endA.y);
+            groups.push(new BarGroup(barA, barB, diagonalLength));
+            refreshCodeFromGraph();
+            return true;
+        }
+
+        function updateToolButtons() {
+            const toolbar = document.getElementById('leftToolbar');
+            const toolButtons = document.querySelectorAll('.tool-btn');
+            if (!toolbar || !toolButtons.length) return;
+
+            toolbar.classList.toggle('opacity-60', isPlayMode);
+            toolbar.classList.toggle('pointer-events-none', isPlayMode);
+
+            toolButtons.forEach(button => {
+                const toolName = button.id.replace('tool', '').toLowerCase();
+                const isActive = currentTool === toolName;
+                button.className = isActive
+                    ? 'tool-btn w-full rounded-xl transition-all text-indigo-600 bg-indigo-50'
+                    : 'tool-btn w-full rounded-xl transition-all text-slate-600 hover:bg-slate-50';
+            });
+        }
+
+        function updateCanvasCursor() {
+            if (!simCanvas) return;
+            simCanvas.style.cursor = isPlayMode ? 'grab' : (TOOL_CURSOR[currentTool] || 'default');
+        }
+
+        function setCodeStatus(message, tone = 'muted') {
+            if (!codeStatus) return;
+            codeStatus.textContent = message;
+            codeStatus.className = tone === 'error'
+                ? 'ml-auto text-[11px] font-medium text-rose-500'
+                : tone === 'ok'
+                    ? 'ml-auto text-[11px] font-medium text-emerald-500'
+                    : 'ml-auto text-[11px] font-medium text-slate-400';
+        }
+
+        function updateAutoMoveButtonState() {
+            const btnAutoMove = document.getElementById('btnAutoMove');
+            const autoMoveLabel = document.getElementById('autoMoveLabel');
+            if (!btnAutoMove || !autoMoveLabel) return;
+
+            autoMoveLabel.textContent = isAutoMove ? "Move: ON" : "Move: OFF";
+            btnAutoMove.className = isAutoMove
+                ? "hidden px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100 transition-all flex items-center space-x-1.5"
+                : "hidden px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-500 border border-gray-200 hover:bg-gray-200 transition-all flex items-center space-x-1.5";
+
+            if (isPlayMode) {
+                btnAutoMove.classList.remove('hidden');
+            } else {
+                btnAutoMove.classList.add('hidden');
+            }
+        }
+
+        function updateModeButtonState() {
+            const btnEdit = document.getElementById('btnEdit');
+            const btnPlay = document.getElementById('btnPlay');
+            if (!btnEdit || !btnPlay) return;
+
+            btnEdit.className = isPlayMode
+                ? "px-3 py-1 rounded-full text-xs font-semibold transition-all text-gray-500 hover:text-gray-800"
+                : "px-3 py-1 rounded-full text-xs font-semibold transition-all bg-white text-gray-800 shadow-sm";
+            btnPlay.className = isPlayMode
+                ? "px-3 py-1 rounded-full text-xs font-semibold transition-all bg-white text-gray-800 shadow-sm"
+                : "px-3 py-1 rounded-full text-xs font-semibold transition-all text-gray-500 hover:text-gray-800";
+        }
+
+        function roundForCode(value) {
+            return Math.round(value * 1000) / 1000;
+        }
+
+        function getMechanismData() {
+            const sortedNodes = [...nodes].sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+            const sortedBars = [...bars].sort((a, b) => {
+                return a.id.localeCompare(b.id, undefined, { numeric: true });
+            });
+            const sortedGroups = [...groups].sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+
+            return {
+                mode: isPlayMode ? "play" : "edit",
+                auto_move: isAutoMove,
+                nodes: sortedNodes.map(node => ({
+                    id: node.id,
+                    x: roundForCode(node.x),
+                    y: roundForCode(node.y),
+                    joint: node.jointType,
+                    fixed: node.fixed,
+                    drawing: node.drawing
+                })),
+                bars: sortedBars.map(bar => ({
+                    id: bar.id,
+                    a: bar.nodeA.id,
+                    b: bar.nodeB.id,
+                    length: roundForCode(bar.length)
+                })),
+                groups: sortedGroups.map(group => ({
+                    id: group.id,
+                    bar_a: group.barA.id,
+                    bar_b: group.barB.id,
+                    diagonal_length: roundForCode(group.diagonalLength)
+                }))
+            };
+        }
+
+        function toPythonLiteral(value, indent = 0) {
+            const pad = ' '.repeat(indent);
+            const nextPad = ' '.repeat(indent + 2);
+
+            if (Array.isArray(value)) {
+                if (!value.length) return '[]';
+                return `[\n${value.map(item => `${nextPad}${toPythonLiteral(item, indent + 2)}`).join(',\n')}\n${pad}]`;
+            }
+
+            if (value && typeof value === 'object') {
+                const entries = Object.entries(value);
+                if (!entries.length) return '{}';
+                return `{\n${entries.map(([key, entryValue]) => `${nextPad}"${key}": ${toPythonLiteral(entryValue, indent + 2)}`).join(',\n')}\n${pad}}`;
+            }
+
+            if (typeof value === 'string') {
+                return JSON.stringify(value);
+            }
+
+            if (typeof value === 'boolean') {
+                return value ? 'True' : 'False';
+            }
+
+            if (value === null || value === undefined) {
+                return 'None';
+            }
+
+            return Number.isFinite(value) ? String(value) : '0';
+        }
+
+        function generateMechanismCode() {
+            return `mechanism = ${toPythonLiteral(getMechanismData())}`;
+        }
+
+        function refreshCodeFromGraph(force = false) {
+            if (!codeEditor) return;
+            if (codeDirty && !force) {
+                setCodeStatus('Code edited locally');
+                return;
+            }
+            codeEditor.value = generateMechanismCode();
+            codeDirty = false;
+            setCodeStatus('Synced');
+        }
+
+        function ensureValidNodeId(rawId) {
+            const id = String(rawId).trim();
+            if (!id) {
+                throw new Error('Each node needs a non-empty id.');
+            }
+            return id;
+        }
+
+        function bumpNextNodeIdFromId(id) {
+            const match = /^n(\d+)$/.exec(id);
+            if (!match) return;
+            nextNodeId = Math.max(nextNodeId, Number(match[1]) + 1);
+        }
+
+        function getNodeJointType(rawNode) {
+            const jointType = rawNode && rawNode.joint ? String(rawNode.joint).trim().toLowerCase() : 'revolute';
+            if (!jointType) return 'revolute';
+            if (jointType !== 'revolute') {
+                throw new Error(`Unsupported joint type: ${jointType}. Only revolute joints are supported right now.`);
+            }
+            return jointType;
+        }
+
+        function parseMechanismCode(text) {
+            const withoutComments = text
+                .split('\n')
+                .map(line => line.replace(/#.*$/, ''))
+                .join('\n')
+                .trim();
+
+            if (!withoutComments) {
+                throw new Error('Code editor is empty.');
+            }
+
+            const literal = withoutComments.replace(/^\s*mechanism\s*=\s*/, '');
+            const jsLiteral = literal
+                .replace(/\bTrue\b/g, 'true')
+                .replace(/\bFalse\b/g, 'false')
+                .replace(/\bNone\b/g, 'null');
+
+            return Function(`"use strict"; return (${jsLiteral});`)();
+        }
+
+        function loadMechanismFromData(data) {
+            if (!data || typeof data !== 'object') {
+                throw new Error('Mechanism code must evaluate to an object.');
+            }
+            if (!Array.isArray(data.nodes) || !Array.isArray(data.bars)) {
+                throw new Error('Mechanism object needs "nodes" and "bars" arrays.');
+            }
+
+            const nodeMap = new Map();
+            const barMap = new Map();
+            const importedNodes = [];
+            const importedBars = [];
+            const importedGroups = [];
+
+            nextNodeId = 1;
+            nextBarId = 1;
+            nextGroupId = 1;
+
+            data.nodes.forEach(rawNode => {
+                const id = ensureValidNodeId(rawNode.id);
+                if (nodeMap.has(id)) {
+                    throw new Error(`Duplicate node id: ${id}`);
+                }
+
+                const x = Number(rawNode.x);
+                const y = Number(rawNode.y);
+                if (!Number.isFinite(x) || !Number.isFinite(y)) {
+                    throw new Error(`Node ${id} needs finite x and y values.`);
+                }
+
+                const jointType = getNodeJointType(rawNode);
+                const node = new Node(x, y, !!rawNode.fixed, !!rawNode.drawing, id, jointType);
+                importedNodes.push(node);
+                nodeMap.set(id, node);
+                bumpNextNodeIdFromId(id);
+            });
+
+            data.bars.forEach((rawBar, index) => {
+                const nodeA = nodeMap.get(String(rawBar.a));
+                const nodeB = nodeMap.get(String(rawBar.b));
+                if (!nodeA || !nodeB) {
+                    throw new Error(`Bar ${index + 1} references missing nodes.`);
+                }
+                if (nodeA === nodeB) {
+                    throw new Error(`Bar ${index + 1} connects a node to itself.`);
+                }
+
+                const barId = rawBar.id ? String(rawBar.id) : `b${nextBarId}`;
+                const bar = new Bar(nodeA, nodeB, barId);
+                if (Number.isFinite(Number(rawBar.length)) && Number(rawBar.length) > 0) {
+                    bar.length = Number(rawBar.length);
+                }
+                importedBars.push(bar);
+                barMap.set(bar.id, bar);
+                const barMatch = /^b(\d+)$/.exec(bar.id);
+                if (barMatch) {
+                    nextBarId = Math.max(nextBarId, Number(barMatch[1]) + 1);
+                }
+            });
+
+            (Array.isArray(data.groups) ? data.groups : []).forEach((rawGroup, index) => {
+                const barA = barMap.get(String(rawGroup.bar_a));
+                const barB = barMap.get(String(rawGroup.bar_b));
+                if (!barA || !barB) {
+                    throw new Error(`Group ${index + 1} references missing bars.`);
+                }
+                if (!getBarsShareNode(barA, barB)) {
+                    throw new Error(`Group ${index + 1} needs two connected bars.`);
+                }
+                const groupId = rawGroup.id ? String(rawGroup.id) : `g${nextGroupId}`;
+                const group = new BarGroup(barA, barB, null, groupId);
+                const endpoints = getGroupEndpoints(group);
+                group.diagonalLength = Number.isFinite(Number(rawGroup.diagonal_length))
+                    ? Number(rawGroup.diagonal_length)
+                    : Math.hypot(endpoints.endB.x - endpoints.endA.x, endpoints.endB.y - endpoints.endA.y);
+                importedGroups.push(group);
+                const groupMatch = /^g(\d+)$/.exec(group.id);
+                if (groupMatch) {
+                    nextGroupId = Math.max(nextGroupId, Number(groupMatch[1]) + 1);
+                }
+            });
+
+            nodes = importedNodes;
+            bars = importedBars;
+            groups = importedGroups;
             selectedNode = null;
             hoverNode = null;
             hoverBar = null;
             creatingBarStartNode = null;
+            creatingGroupStartBar = null;
+            autoMoveTime = 0;
+            clearTrace();
+
+            if (typeof data.auto_move === 'boolean') {
+                isAutoMove = data.auto_move;
+            }
+
+            if (data.mode === 'play') {
+                isPlayMode = true;
+            } else if (data.mode === 'edit') {
+                isPlayMode = false;
+            }
+
+            recordInitialAngles();
+            updateCanvasCursor();
+            updateModeButtonState();
+            updateToolButtons();
+            updateAutoMoveButtonState();
+            refreshCodeFromGraph(true);
+        }
+
+        function snapshotNodePositions() {
+            return nodes.map(node => ({ x: node.x, y: node.y }));
+        }
+
+        function restoreNodePositions(snapshot) {
+            nodes.forEach((node, index) => {
+                node.x = snapshot[index].x;
+                node.y = snapshot[index].y;
+            });
+        }
+
+        function isPlayLockedNode(node) {
+            return node.fixed || (isAutoMove && initialAngles.has(node));
+        }
+
+        function solveRigidConstraintsStrict() {
+            let maxError = Infinity;
+
+            for (let iter = 0; iter < SOLVER_ITERATIONS; iter++) {
+                maxError = 0;
+
+                bars.forEach(bar => {
+                    const nodeA = bar.nodeA;
+                    const nodeB = bar.nodeB;
+                    const dx = nodeB.x - nodeA.x;
+                    const dy = nodeB.y - nodeA.y;
+                    const dist = Math.hypot(dx, dy);
+                    const error = dist - bar.length;
+
+                    maxError = Math.max(maxError, Math.abs(error));
+                    if (dist < 0.0000001 || Math.abs(error) < SOLVER_TOLERANCE) {
+                        return;
+                    }
+
+                    const weightA = isPlayLockedNode(nodeA) ? 0 : 1;
+                    const weightB = isPlayLockedNode(nodeB) ? 0 : 1;
+                    const totalWeight = weightA + weightB;
+                    if (totalWeight === 0) return;
+
+                    const correctionX = (dx / dist) * error;
+                    const correctionY = (dy / dist) * error;
+
+                    if (weightA > 0) {
+                        nodeA.x += correctionX * (weightA / totalWeight);
+                        nodeA.y += correctionY * (weightA / totalWeight);
+                    }
+
+                    if (weightB > 0) {
+                        nodeB.x -= correctionX * (weightB / totalWeight);
+                        nodeB.y -= correctionY * (weightB / totalWeight);
+                    }
+                });
+
+                groups.forEach(group => {
+                    const endpoints = getGroupEndpoints(group);
+                    if (!endpoints) return;
+
+                    const nodeA = endpoints.endA;
+                    const nodeB = endpoints.endB;
+                    const dx = nodeB.x - nodeA.x;
+                    const dy = nodeB.y - nodeA.y;
+                    const dist = Math.hypot(dx, dy);
+                    const error = dist - group.diagonalLength;
+
+                    maxError = Math.max(maxError, Math.abs(error));
+                    if (dist < 0.0000001 || Math.abs(error) < SOLVER_TOLERANCE) {
+                        return;
+                    }
+
+                    const weightA = isPlayLockedNode(nodeA) ? 0 : 1;
+                    const weightB = isPlayLockedNode(nodeB) ? 0 : 1;
+                    const totalWeight = weightA + weightB;
+                    if (totalWeight === 0) return;
+
+                    const correctionX = (dx / dist) * error;
+                    const correctionY = (dy / dist) * error;
+
+                    if (weightA > 0) {
+                        nodeA.x += correctionX * (weightA / totalWeight);
+                        nodeA.y += correctionY * (weightA / totalWeight);
+                    }
+
+                    if (weightB > 0) {
+                        nodeB.x -= correctionX * (weightB / totalWeight);
+                        nodeB.y -= correctionY * (weightB / totalWeight);
+                    }
+                });
+
+                if (maxError < SOLVER_TOLERANCE) {
+                    break;
+                }
+            }
+
+            return maxError;
+        }
+
+        function setTool(toolName) {
+            currentTool = toolName;
+            creatingBarStartNode = null;
+            creatingGroupStartBar = null;
+            updateToolButtons();
+            updateCanvasCursor();
+        }
+
+        function resetToDefaultState() {
+            nodes = [];
+            bars = [];
+            groups = [];
+            selectedNode = null;
+            hoverNode = null;
+            hoverBar = null;
+            creatingBarStartNode = null;
+            creatingGroupStartBar = null;
             autoMoveTime = 0;
             initialAngles.clear();
+            nextNodeId = 1;
+            nextBarId = 1;
+            nextGroupId = 1;
             clearTrace();
 
             // Default setup: 45 degree single bar with fixed bottom node and drawing top node
@@ -188,6 +772,9 @@
             bars.push(new Bar(nodeA, nodeB));
 
             recordInitialAngles();
+            updateCanvasCursor();
+            updateAutoMoveButtonState();
+            refreshCodeFromGraph(true);
         }
 
         function recordInitialAngles() {
@@ -204,8 +791,108 @@
             });
         }
 
+        function getConnectedBars(node) {
+            return bars.filter(bar => bar.nodeA === node || bar.nodeB === node);
+        }
+
+        function getOtherNode(bar, node) {
+            return bar.nodeA === node ? bar.nodeB : bar.nodeA;
+        }
+
+        function getCircleIntersections(x0, y0, r0, x1, y1, r1) {
+            const dx = x1 - x0;
+            const dy = y1 - y0;
+            const d = Math.hypot(dx, dy);
+
+            if (d === 0 || d > r0 + r1 || d < Math.abs(r0 - r1)) {
+                return [];
+            }
+
+            const a = (r0 * r0 - r1 * r1 + d * d) / (2 * d);
+            const hSq = r0 * r0 - a * a;
+            if (hSq < 0) {
+                return [];
+            }
+
+            const h = Math.sqrt(hSq);
+            const xm = x0 + (a * dx) / d;
+            const ym = y0 + (a * dy) / d;
+            const rx = (-dy * h) / d;
+            const ry = (dx * h) / d;
+
+            if (h < 0.0001) {
+                return [{ x: xm, y: ym }];
+            }
+
+            return [
+                { x: xm + rx, y: ym + ry },
+                { x: xm - rx, y: ym - ry }
+            ];
+        }
+
+        function moveNodeRigidInPlay(node, targetX, targetY) {
+            if (node.fixed) return;
+
+            const connectedBars = getConnectedBars(node);
+            if (connectedBars.length === 0) {
+                node.x = targetX;
+                node.y = targetY;
+                return;
+            }
+
+            if (connectedBars.length === 1) {
+                const bar = connectedBars[0];
+                const anchor = getOtherNode(bar, node);
+                const dx = targetX - anchor.x;
+                const dy = targetY - anchor.y;
+                const dist = Math.hypot(dx, dy);
+
+                if (dist < 0.0001) {
+                    return;
+                }
+
+                node.x = anchor.x + (dx / dist) * bar.length;
+                node.y = anchor.y + (dy / dist) * bar.length;
+                return;
+            }
+
+            const barA = connectedBars[0];
+            const barB = connectedBars[1];
+            const anchorA = getOtherNode(barA, node);
+            const anchorB = getOtherNode(barB, node);
+            const candidates = getCircleIntersections(
+                anchorA.x, anchorA.y, barA.length,
+                anchorB.x, anchorB.y, barB.length
+            );
+
+            if (!candidates.length) {
+                return;
+            }
+
+            let bestCandidate = candidates[0];
+            let bestDistance = Math.hypot(bestCandidate.x - targetX, bestCandidate.y - targetY);
+
+            for (let i = 1; i < candidates.length; i++) {
+                const candidate = candidates[i];
+                const distanceToTarget = Math.hypot(candidate.x - targetX, candidate.y - targetY);
+                if (distanceToTarget < bestDistance) {
+                    bestCandidate = candidate;
+                    bestDistance = distanceToTarget;
+                }
+            }
+
+            node.x = bestCandidate.x;
+            node.y = bestCandidate.y;
+        }
+
         function updatePhysics() {
             if (!isPlayMode) return;
+
+            const previousSnapshot = snapshotNodePositions();
+
+            if (isDragging && selectedNode) {
+                moveNodeRigidInPlay(selectedNode, dragOffset.currentX, dragOffset.currentY);
+            }
 
             // 1. Auto-move swing logic (60-degree sinusoidal oscillation = PI / 3)
             if (isAutoMove) {
@@ -219,58 +906,9 @@
                 });
             }
 
-            // Update nodes attached to parent bars
-            nodes.forEach(node => {
-                if (node.parentBar) {
-                    const pA = node.parentBar.nodeA;
-                    const pB = node.parentBar.nodeB;
-                    node.x = pA.x + (pB.x - pA.x) * node.barU;
-                    node.y = pA.y + (pB.y - pA.y) * node.barU;
-                }
-            });
-
-            // 2. High-precision Position-Based Dynamics (200 substeps for zero-flex rigidity)
-            const iterations = 200;
-            for (let iter = 0; iter < iterations; iter++) {
-                bars.forEach(bar => {
-                    const nodeA = bar.nodeA;
-                    const nodeB = bar.nodeB;
-
-                    const dx = nodeB.x - nodeA.x;
-                    const dy = nodeB.y - nodeA.y;
-                    const dist = Math.hypot(dx, dy) || 0.001;
-                    const delta = (dist - bar.length) / dist;
-
-                    const moveX = dx * 0.5 * delta;
-                    const moveY = dy * 0.5 * delta;
-
-                    // Determine mobility
-                    const aIsLocked = nodeA.fixed || (isAutoMove && initialAngles.has(nodeA)) || (isDragging && selectedNode === nodeA);
-                    const bIsLocked = nodeB.fixed || (isAutoMove && initialAngles.has(nodeB)) || (isDragging && selectedNode === nodeB);
-
-                    if (!aIsLocked && !bIsLocked) {
-                        nodeA.x += moveX;
-                        nodeA.y += moveY;
-                        nodeB.x -= moveX;
-                        nodeB.y -= moveY;
-                    } else if (aIsLocked && !bIsLocked) {
-                        nodeB.x -= moveX * 2;
-                        nodeB.y -= moveY * 2;
-                    } else if (!aIsLocked && bIsLocked) {
-                        nodeA.x += moveX * 2;
-                        nodeA.y += moveY * 2;
-                    }
-                });
-
-                // Re-enforce child nodes on bars
-                nodes.forEach(node => {
-                    if (node.parentBar) {
-                        const pA = node.parentBar.nodeA;
-                        const pB = node.parentBar.nodeB;
-                        node.x = pA.x + (pB.x - pA.x) * node.barU;
-                        node.y = pA.y + (pB.y - pA.y) * node.barU;
-                    }
-                });
+            const maxError = solveRigidConstraintsStrict();
+            if (maxError > SOLVER_ACCEPT_ERROR) {
+                restoreNodePositions(previousSnapshot);
             }
 
             // 3. Record trajectory traces
@@ -285,37 +923,33 @@
             });
         }
 
-        function drawGrid() {
-            ctx.strokeStyle = '#f1f5f9';
-            ctx.lineWidth = 1;
-
-            ctx.beginPath();
-            for (let x = 0; x < width; x += GRID_SIZE) {
-                ctx.moveTo(x, 0);
-                ctx.lineTo(x, height);
-            }
-            for (let y = 0; y < height; y += GRID_SIZE) {
-                ctx.moveTo(0, y);
-                ctx.lineTo(width, y);
-            }
-            ctx.stroke();
-        }
-
         function drawScene() {
             ctx.clearRect(0, 0, width, height);
-
-            // Background Grid
-            drawGrid();
 
             // Render Linkage Bars
             bars.forEach(bar => {
                 const isHovered = (hoverBar === bar);
+                const isGrouped = barBelongsToAnyGroup(bar);
+                const isPendingGroup = creatingGroupStartBar === bar;
                 ctx.beginPath();
                 ctx.moveTo(bar.nodeA.x, bar.nodeA.y);
                 ctx.lineTo(bar.nodeB.x, bar.nodeB.y);
-                ctx.strokeStyle = isHovered ? '#6366f1' : '#475569';
-                ctx.lineWidth = isHovered ? 7 : 5;
+                ctx.strokeStyle = isPendingGroup ? '#4f46e5' : isGrouped ? '#334155' : (isHovered ? '#6366f1' : '#94a3b8');
+                ctx.lineWidth = isPendingGroup ? 7 : isGrouped ? 6 : (isHovered ? 6 : 4);
                 ctx.lineCap = 'round';
+                ctx.setLineDash(isGrouped || isPendingGroup ? [] : [12, 10]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            });
+
+            groups.forEach(group => {
+                const endpoints = getGroupEndpoints(group);
+                if (!endpoints) return;
+
+                ctx.beginPath();
+                ctx.arc(endpoints.sharedNode.x, endpoints.sharedNode.y, 7, 0, Math.PI * 2);
+                ctx.strokeStyle = '#4f46e5';
+                ctx.lineWidth = 2;
                 ctx.stroke();
             });
 
@@ -438,50 +1072,72 @@
                 }
             } else {
                 // Edit Mode interaction
-                if (hoverNode) {
-                    if (e.shiftKey) {
-                        // Toggle filters on Shift+Click: Fixed -> Drawing -> Normal
-                        if (!hoverNode.fixed && !hoverNode.drawing) {
-                            hoverNode.fixed = true;
-                        } else if (hoverNode.fixed) {
-                            hoverNode.fixed = false;
-                            hoverNode.drawing = true;
-                        } else {
-                            hoverNode.drawing = false;
-                        }
-                        clearTrace();
-                        recordInitialAngles();
-                    } else if (e.altKey) {
-                        // Delete Node on Alt+Click
-                        deleteNode(hoverNode);
+                if (e.altKey && hoverNode) {
+                    deleteNode(hoverNode);
+                    return;
+                }
+                if (e.altKey && hoverBar) {
+                    deleteBar(hoverBar);
+                    return;
+                }
+                if (e.shiftKey && hoverNode) {
+                    if (!hoverNode.fixed && !hoverNode.drawing) {
+                        hoverNode.fixed = true;
+                    } else if (hoverNode.fixed) {
+                        hoverNode.fixed = false;
+                        hoverNode.drawing = true;
                     } else {
-                        // Start bar creation or dragging
-                        creatingBarStartNode = hoverNode;
+                        hoverNode.drawing = false;
+                    }
+                    clearTrace();
+                    recordInitialAngles();
+                    return;
+                }
+
+                if (currentTool === 'select') {
+                    if (hoverNode) {
                         selectedNode = hoverNode;
                         isDragging = true;
                     }
-                } else if (hoverBar) {
-                    if (e.altKey) {
-                        // Delete Bar
-                        deleteBar(hoverBar);
-                    } else {
-                        // Insert node on existing bar
-                        const proj = distToSegment(pos, hoverBar.nodeA, hoverBar.nodeB);
-                        const newNode = new Node(proj.projX, proj.projY);
-                        newNode.parentBar = hoverBar;
-                        newNode.barU = proj.u;
-                        nodes.push(newNode);
-                        clearTrace();
+                } else if (currentTool === 'node') {
+                    if (!hoverNode && !hoverBar) {
+                        createNodeAt(pos.x, pos.y);
                     }
-                } else {
-                    // Create new free node in space
-                    let newNode = new Node(pos.x, pos.y);
-                    if (gridSnap) newNode.snapToGrid();
-                    nodes.push(newNode);
-                    creatingBarStartNode = newNode;
-                    selectedNode = newNode;
-                    isDragging = true;
-                    clearTrace();
+                } else if (currentTool === 'bar') {
+                    if (hoverNode) {
+                        if (!creatingBarStartNode) {
+                            creatingBarStartNode = hoverNode;
+                            selectedNode = hoverNode;
+                        } else {
+                            tryCreateBar(creatingBarStartNode, hoverNode);
+                            creatingBarStartNode = null;
+                            selectedNode = null;
+                        }
+                    }
+                } else if (currentTool === 'group') {
+                    if (hoverBar) {
+                        if (!creatingGroupStartBar || creatingGroupStartBar === hoverBar) {
+                            creatingGroupStartBar = hoverBar;
+                        } else if (!toggleBarGroup(creatingGroupStartBar, hoverBar)) {
+                            creatingGroupStartBar = hoverBar;
+                        } else {
+                            creatingGroupStartBar = null;
+                        }
+                    }
+                } else if (currentTool === 'fix') {
+                    if (hoverNode) {
+                        toggleNodeFixed(hoverNode);
+                    }
+                } else if (currentTool === 'draw') {
+                    if (hoverNode) {
+                        toggleNodeDrawing(hoverNode);
+                    }
+                } else if (currentTool === 'delete') {
+                    if (hoverNode) {
+                        deleteNode(hoverNode);
+                    } else if (hoverBar) {
+                        deleteBar(hoverBar);
+                    }
                 }
             }
         }
@@ -495,23 +1151,18 @@
 
             if (isDragging && selectedNode) {
                 if (isPlayMode) {
-                    if (!selectedNode.fixed) {
-                        selectedNode.x = pos.x;
-                        selectedNode.y = pos.y;
-                    }
+                    return;
                 } else {
                     // Edit Mode move node
                     selectedNode.x = pos.x;
                     selectedNode.y = pos.y;
-                    if (gridSnap && !selectedNode.parentBar) {
-                        selectedNode.snapToGrid();
-                    }
                     // Update bar lengths attached to this node
                     bars.forEach(b => {
                         if (b.nodeA === selectedNode || b.nodeB === selectedNode) {
                             b.updateLength();
                         }
                     });
+                    updateGroupDiagonalLengths();
                     clearTrace();
                     recordInitialAngles();
                 }
@@ -521,48 +1172,42 @@
         function onMouseUp(e) {
             const pos = getMousePos(e);
 
-            if (!isPlayMode && creatingBarStartNode) {
+            if (!isPlayMode && currentTool !== 'bar' && creatingBarStartNode) {
                 findHoveredElement(pos);
                 if (hoverNode && hoverNode !== creatingBarStartNode) {
-                    // Create Bar between starting node and hover node
-                    const existingBar = bars.find(b =>
-                        (b.nodeA === creatingBarStartNode && b.nodeB === hoverNode) ||
-                        (b.nodeA === hoverNode && b.nodeB === creatingBarStartNode)
-                    );
-                    if (!existingBar) {
-                        bars.push(new Bar(creatingBarStartNode, hoverNode));
-                        clearTrace();
-                        recordInitialAngles();
-                    }
+                    tryCreateBar(creatingBarStartNode, hoverNode);
                 }
             }
 
             isDragging = false;
             selectedNode = null;
-            creatingBarStartNode = null;
+            if (currentTool !== 'bar') {
+                creatingBarStartNode = null;
+            }
+            if (currentTool !== 'group') {
+                creatingGroupStartBar = null;
+            }
+            if (!isPlayMode) {
+                refreshCodeFromGraph();
+            }
         }
 
         function deleteNode(node) {
+            const barsToDelete = bars.filter(b => b.nodeA === node || b.nodeB === node);
             nodes = nodes.filter(n => n !== node);
             bars = bars.filter(b => b.nodeA !== node && b.nodeB !== node);
-            nodes.forEach(n => {
-                if (n.parentBar && (n.parentBar.nodeA === node || n.parentBar.nodeB === node)) {
-                    n.parentBar = null;
-                }
-            });
+            groups = groups.filter(group => !barsToDelete.includes(group.barA) && !barsToDelete.includes(group.barB));
             clearTrace();
             recordInitialAngles();
+            refreshCodeFromGraph();
         }
 
         function deleteBar(bar) {
             bars = bars.filter(b => b !== bar);
-            nodes.forEach(n => {
-                if (n.parentBar === bar) {
-                    n.parentBar = null;
-                }
-            });
+            groups = groups.filter(group => group.barA !== bar && group.barB !== bar);
             clearTrace();
             recordInitialAngles();
+            refreshCodeFromGraph();
         }
 
         window.onload = function() {
@@ -576,51 +1221,91 @@
             const btnEdit = document.getElementById('btnEdit');
             const btnPlay = document.getElementById('btnPlay');
             const btnAutoMove = document.getElementById('btnAutoMove');
-            const autoMoveLabel = document.getElementById('autoMoveLabel');
-            const btnReset = document.getElementById('btnReset');
             const btnClearTrace = document.getElementById('btnClearTrace');
-            const chkGridSnap = document.getElementById('chkGridSnap');
+            const btnApplyCode = document.getElementById('btnApplyCode');
+            const btnSyncCode = document.getElementById('btnSyncCode');
+            const btnCopyCode = document.getElementById('btnCopyCode');
+            const toolSelect = document.getElementById('toolSelect');
+            const toolNode = document.getElementById('toolNode');
+            const toolBar = document.getElementById('toolBar');
+            const toolGroup = document.getElementById('toolGroup');
+            const toolFix = document.getElementById('toolFix');
+            const toolDraw = document.getElementById('toolDraw');
+            const toolDelete = document.getElementById('toolDelete');
+            codeEditor = document.getElementById('codeEditor');
+            codeStatus = document.getElementById('codeStatus');
 
             // Mode Switching
             btnEdit.addEventListener('click', () => {
                 isPlayMode = false;
-                btnEdit.className = "px-3 py-1 rounded-full text-xs font-semibold transition-all bg-white text-gray-800 shadow-sm";
-                btnPlay.className = "px-3 py-1 rounded-full text-xs font-semibold transition-all text-gray-500 hover:text-gray-800";
-                btnAutoMove.classList.add('hidden');
+                updateModeButtonState();
+                updateAutoMoveButtonState();
                 clearTrace();
+                updateToolButtons();
+                updateCanvasCursor();
+                refreshCodeFromGraph();
             });
 
             btnPlay.addEventListener('click', () => {
                 isPlayMode = true;
-                btnPlay.className = "px-3 py-1 rounded-full text-xs font-semibold transition-all bg-white text-gray-800 shadow-sm";
-                btnEdit.className = "px-3 py-1 rounded-full text-xs font-semibold transition-all text-gray-500 hover:text-gray-800";
-                btnAutoMove.classList.remove('hidden');
+                updateModeButtonState();
                 recordInitialAngles();
                 autoMoveTime = 0;
                 clearTrace();
+                updateToolButtons();
+                updateCanvasCursor();
+                updateAutoMoveButtonState();
+                refreshCodeFromGraph();
             });
 
             // Move Toggle
             btnAutoMove.addEventListener('click', () => {
                 isAutoMove = !isAutoMove;
-                autoMoveLabel.textContent = isAutoMove ? "Move: ON" : "Move: OFF";
-                btnAutoMove.className = isAutoMove 
-                    ? "px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100 transition-all flex items-center space-x-1.5"
-                    : "px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-500 border border-gray-200 hover:bg-gray-200 transition-all flex items-center space-x-1.5";
-            });
-
-            // Reset & Clear Path
-            btnReset.addEventListener('click', () => {
-                resetToDefaultState();
+                updateAutoMoveButtonState();
+                refreshCodeFromGraph();
             });
 
             btnClearTrace.addEventListener('click', () => {
                 clearTrace();
             });
 
-            chkGridSnap.addEventListener('change', (e) => {
-                gridSnap = e.target.checked;
+            codeEditor.addEventListener('input', () => {
+                codeDirty = true;
+                setCodeStatus('Code edited locally');
             });
+
+            btnSyncCode.addEventListener('click', () => {
+                refreshCodeFromGraph(true);
+                setCodeStatus('Loaded from graph', 'ok');
+            });
+
+            btnApplyCode.addEventListener('click', () => {
+                try {
+                    const mechanismData = parseMechanismCode(codeEditor.value);
+                    loadMechanismFromData(mechanismData);
+                    codeDirty = false;
+                    setCodeStatus('Applied to graph', 'ok');
+                } catch (error) {
+                    setCodeStatus(error.message || 'Invalid code', 'error');
+                }
+            });
+
+            btnCopyCode.addEventListener('click', async () => {
+                try {
+                    await navigator.clipboard.writeText(codeEditor.value);
+                    setCodeStatus('Copied', 'ok');
+                } catch (error) {
+                    setCodeStatus('Copy failed', 'error');
+                }
+            });
+
+            toolSelect.addEventListener('click', () => setTool('select'));
+            toolNode.addEventListener('click', () => setTool('node'));
+            toolBar.addEventListener('click', () => setTool('bar'));
+            toolGroup.addEventListener('click', () => setTool('group'));
+            toolFix.addEventListener('click', () => setTool('fix'));
+            toolDraw.addEventListener('click', () => setTool('draw'));
+            toolDelete.addEventListener('click', () => setTool('delete'));
 
             // Canvas Interaction Listeners
             simCanvas.addEventListener('mousedown', onMouseDown);
@@ -644,7 +1329,10 @@
 
             // Initialize scene and start game loop
             resizeCanvas();
+            setTool('select');
             resetToDefaultState();
+            updateModeButtonState();
+            refreshCodeFromGraph(true);
             requestAnimationFrame(gameLoop);
         };
     </script>
